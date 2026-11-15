@@ -1,0 +1,86 @@
+From: Mathias Boulay <mathiasboulay@free.fr>
+Subject: [PATCH] DeviceAsWebcam: reswizzle if gpu encoding is enabled
+
+As described by f2cc9ed73a71b4689c6873429ad25524812ff060, our device has red and blue colors inverted.
+Rather than using the generic opt out (disabling gpu encoding), we can just invert the processing of U and V channels
+---
+Index: interface/jni/SdkFrameProvider.cpp
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/interface/jni/SdkFrameProvider.cpp b/interface/jni/SdkFrameProvider.cpp
+--- a/interface/jni/SdkFrameProvider.cpp	(revision c5b6159d081ed2e417974388d8f98a58d6b57656)
++++ b/interface/jni/SdkFrameProvider.cpp	(revision 2faf9dd3f3c6c9cfac2438ca8fc37cf98b4bb213)
+@@ -15,6 +15,7 @@
+  */
+ 
+ #include <DeviceAsWebcamServiceManager.h>
++#include <android-base/properties.h>
+ #include <linux/videodev2.h>
+ #include <log/log.h>
+ #include <utility>
+@@ -28,7 +29,8 @@
+ namespace webcam {
+ 
+ SdkFrameProvider::SdkFrameProvider(std::shared_ptr<BufferProducer> producer, CameraConfig config)
+-    : FrameProvider(std::move(producer), config) {
++    : FrameProvider(std::move(producer), config),
++      mGpuDisabled(android::base::GetBoolProperty("ro.usb.uvc.disable_video_encode_flag", false)) {
+     // Set stream configuration in java service.
+     mEncoder = std::make_shared<Encoder>(config, this);
+     if (!(mEncoder->isInited())) {
+@@ -98,15 +100,29 @@
+       yuvDesc.yDataLength = planes.planes[0].rowStride * (height - 1) + width;
+       yuvDesc.yRowStride = planes.planes[0].rowStride;
+ 
+-      yuvDesc.uData = (uint8_t*) planes.planes[1].data;
+-      yuvDesc.uDataLength = planes.planes[1].rowStride * (height / 2 - 1) +
+-          (planes.planes[1].pixelStride * width / 2 - 1) + 1;
+-      yuvDesc.uRowStride = planes.planes[1].rowStride;
++      if (!mGpuDisabled) {
++        // Gpu encoding has a swizzling bug where the U and V channels are inverted, breaking the contract of
++        // `AHardwareBuffer_lockPlanes`
++        yuvDesc.vData = (uint8_t*) planes.planes[1].data;
++        yuvDesc.vDataLength = planes.planes[1].rowStride * (height / 2 - 1) +
++            (planes.planes[1].pixelStride * width / 2 - 1) + 1;
++        yuvDesc.vRowStride = planes.planes[1].rowStride;
++
++        yuvDesc.uData = (uint8_t*) planes.planes[2].data;
++        yuvDesc.uDataLength = planes.planes[2].rowStride * (height / 2 - 1) +
++            (planes.planes[2].pixelStride * width / 2 - 1) + 1;
++        yuvDesc.uRowStride = planes.planes[2].rowStride;
++      } else {
++        yuvDesc.uData = (uint8_t*) planes.planes[1].data;
++        yuvDesc.uDataLength = planes.planes[1].rowStride * (height / 2 - 1) +
++            (planes.planes[1].pixelStride * width / 2 - 1) + 1;
++        yuvDesc.uRowStride = planes.planes[1].rowStride;
+ 
+-      yuvDesc.vData = (uint8_t*) planes.planes[2].data;
+-      yuvDesc.vDataLength = planes.planes[2].rowStride * (height / 2 - 1) +
+-          (planes.planes[2].pixelStride * width / 2 - 1) + 1;
+-      yuvDesc.vRowStride = planes.planes[2].rowStride;
++        yuvDesc.vData = (uint8_t*) planes.planes[2].data;
++        yuvDesc.vDataLength = planes.planes[2].rowStride * (height / 2 - 1) +
++            (planes.planes[2].pixelStride * width / 2 - 1) + 1;
++        yuvDesc.vRowStride = planes.planes[2].rowStride;
++      }
+ 
+       // Pixel stride is the same for u and v planes
+       yuvDesc.uvPixelStride = planes.planes[1].pixelStride;
+Index: interface/jni/SdkFrameProvider.h
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/interface/jni/SdkFrameProvider.h b/interface/jni/SdkFrameProvider.h
+--- a/interface/jni/SdkFrameProvider.h	(revision c5b6159d081ed2e417974388d8f98a58d6b57656)
++++ b/interface/jni/SdkFrameProvider.h	(revision 2faf9dd3f3c6c9cfac2438ca8fc37cf98b4bb213)
+@@ -53,6 +53,7 @@
+             mBufferIdToAHardwareBuffer;  // guarded by mMapLock
+     uint32_t mNextBufferId = 0;          // guarded by mMapLock
+     std::shared_ptr<Encoder> mEncoder;
++    bool mGpuDisabled = false;
+ };
+ 
+ }  // namespace webcam
