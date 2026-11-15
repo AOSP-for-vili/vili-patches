@@ -1,0 +1,31 @@
+From: Mathias Boulay <mathiasboulay@free.fr>
+Subject: [PATCH] DeviceAsWebcam: Disable advertising of 1080p resolution
+
+At those sensor sizes, there is virtually no benefit choosing 1080p over 720p.  
+It is better for the phone to use its processing power on the "high quality" camera mode instead.
+---
+Index: etc/init.qcom.usb.rc
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/etc/init.qcom.usb.rc b/etc/init.qcom.usb.rc
+--- a/etc/init.qcom.usb.rc	(revision 0d32cd0034b767aa8a6b5fbc8516570af8cf3e5f)
++++ b/etc/init.qcom.usb.rc	(revision b3b3bab5eb127a5cce7d9de9df7ba35ecfbb3007)
+@@ -2054,16 +2054,6 @@
+ 333333
+ 416666
+ 666666"
+-    # advertise 1080p resolution for webcam encoded as mjpeg
+-    mkdir /config/usb_gadget/g1/functions/uvc.0/streaming/mjpeg/m/1080p
+-    write /config/usb_gadget/g1/functions/uvc.0/streaming/mjpeg/m/1080p/wHeight 1080
+-    write /config/usb_gadget/g1/functions/uvc.0/streaming/mjpeg/m/1080p/wWidth 1920
+-    write /config/usb_gadget/g1/functions/uvc.0/streaming/mjpeg/m/1080p/dwMaxVideoFrameBufferSize 4147200
+-    write /config/usb_gadget/g1/functions/uvc.0/streaming/mjpeg/m/1080p/dwDefaultFrameInterval 333333
+-    write /config/usb_gadget/g1/functions/uvc.0/streaming/mjpeg/m/1080p/dwFrameInterval "166666
+-333333
+-416666
+-666666"
+     # TODO: Add uncompressed streams
+     # setup streaming params
+     mkdir /config/usb_gadget/g1/functions/uvc.0/streaming/header/h
